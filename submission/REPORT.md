@@ -1,4 +1,4 @@
-# Báo cáo Day 09 — Nguyễn Bình Anh, 2A202504063
+# Báo cáo Day 09 — Nguyễn Bình Anh, 2A202604063
 
 ## 1. Kết luận trước
 Pipeline kết luận **HOLD** (tạm giữ, xuất bản nháp tại `submission/export/clean_v1` và chưa phát hành chính thức). Từ **224 ảnh** đầu vào (`data/raw/`), Bước 1 loại **19 ảnh** không đạt chuẩn (ảnh hỏng, sai kích thước, trùng lặp, rò rỉ tập test) và đưa **205 ảnh** vào dataset. Sau khi máy tự sửa lỗi cú pháp và người duyệt hết ngân sách **80 ảnh** (bao gồm 6 ảnh thiếu nhãn), dataset không còn lỗi bắt buộc (`0 error`) nhưng vẫn còn **38/205 ảnh (18.54%)** mang cảnh báo chưa được duyệt — vượt ngưỡng cho phép **10.00%** của cửa chặn.
