@@ -1,4 +1,4 @@
-# Báo cáo Day 09 — Nguyễn Bình Anh, 2A202504063
+# Báo cáo Day 09 — Nguyễn Bình Anh, 2A202604063
 
 ## 1. Kết luận trước
 Pipeline kết luận **HOLD** (tạm giữ, xuất bản nháp tại `submission/export/clean_v1` và chưa phát hành chính thức). Từ **224 ảnh** đầu vào (`data/raw/`), Bước 1 loại **19 ảnh** không đạt chuẩn (ảnh hỏng, sai kích thước, trùng lặp, rò rỉ tập test) và đưa **205 ảnh** vào dataset. Sau khi máy tự sửa lỗi cú pháp và người duyệt hết ngân sách **80 ảnh** (bao gồm 6 ảnh thiếu nhãn), dataset không còn lỗi bắt buộc (`0 error`) nhưng vẫn còn **38/205 ảnh (18.54%)** mang cảnh báo chưa được duyệt — vượt ngưỡng cho phép **10.00%** của cửa chặn.
@@ -48,7 +48,21 @@ Tổng hợp từ `02_error_list_v1.csv` trên lô dữ liệu (19 ảnh loại 
 - **Điều pipeline vẫn không bắt được:** Các vật thể bị che khuất nặng, quá nhỏ (`< 400 px²` bị lọc bởi `min_area_px` trong `second_opinion`), hoặc các ca mờ nhòe mà cả người gán lẫn model `yolo26l` đều bỏ sót/nhầm giống nhau; ngoài ra **38 ảnh** mang cảnh báo nằm ngoài top 80 của hàng đợi chưa được người xem nên cửa chặn buộc phải dừng ở **HOLD**.
 
 ## 5. Train: raw vs clean (tùy chọn, chấm riêng)
-Chưa chạy (tập trung hoàn thiện pipeline QC, hiệu chỉnh ngưỡng, rà soát thủ công và kiểm thử hồi quy).
+Cấu hình thí nghiệm công bằng: model khởi tạo `yolo26n.pt`, `20` epoch, `batch=16`, `imgsz=640`, `seed ∈ {0, 1}`, đánh giá cùng trên tập `val` (`data/gold_val`, 40 ảnh) và tập `test` (`data/test`, 100 ảnh, 387 đối tượng).
+
+| Biến thể | Số ảnh khai báo / thực train | Seed 0 (mAP50 / mAP50-95) | Seed 1 (mAP50 / mAP50-95) | Trung bình mAP50 ± std | AP50 trung bình theo lớp (`car` / `person` / `truck` / `bus`) |
+|---|---:|---|---|---|---|
+| `raw` | 224 / 213 ảnh | `0.7256` / `0.5144` | `0.7259` / `0.5090` | `0.7258 ± 0.0002` | `0.7375` / `0.8221` / `0.6485` / `0.6949` |
+| `clean` (`clean_v1`) | 205 / 205 ảnh | `0.6787` / `0.4770` | `0.7219` / `0.4953` | `0.7003 ± 0.0305` | `0.7485` / `0.8274` / `0.5588` / `0.6667` |
+
+
+
+- **Đánh giá trung thực chênh lệch `mAP50` (`clean − raw`):**
+  - Chênh lệch trung bình là `-0.0255` (`0.7003` so với `0.7258`), nhưng **độ lệch chuẩn giữa 2 seed của `clean` lên tới `±0.0305`** (trong đó `clean_seed1` đạt `0.7219`, gần như ngang bằng `raw` `0.7259`, còn `clean_seed0` giảm xuống `0.6787`).Vì mức chênh nằm gọn trong dao động nhiễu giữa các seed (và số lượng mẫu/epoch nhỏ: ~205 ảnh, 20 epoch), **chưa thể kết luận `clean` kém hơn `raw` về mặt thống kê**.
+- **Các giả thuyết giải thích & cách kiểm chứng:**
+  1. **Điểm số của `raw` bị thổi phồng do rò rỉ tập test (`LEAK_TEST`):** Ở Bước 1 (`01_intake.csv`), pipeline phát hiện **4 ảnh trong `raw` trùng với `data/test`** và đã loại khỏi `clean`, trong khi `raw` giữ nguyên 4 ảnh này để học thuộc lòng rồi thi lại trên chính `data/test`. *Cách kiểm:* loại bỏ 4 ảnh `LEAK_TEST` khỏi `raw` rồi train lại để đo điểm thật không rò rỉ.
+  2. **Ultralytics tự động lọc hộ 11 file hỏng cho `raw`:** Log huấn luyện cho thấy `raw` khai báo 224 ảnh nhưng Ultralytics tự bỏ qua **11 file ảnh/nhãn hỏng** (`img_0010`, `img_0014`, `img_0020`, `img_0022`, `img_0099`, `img_0104`, `img_0117`, `img_0136`, `img_0179`, `img_0194`, `img_0199` — lỗi tọa độ âm/tràn biên, ID lớp `4/7/93`, ảnh cắt cụt), nên thực tế `raw` vẫn được train trên **213 ảnh sạch cú pháp** chứ không bị sập vì nhãn rác.
+  3. **`clean_v1` chưa phải chặn trên ("oracle") & mất cân bằng lớp hiếm:** Do hết ngân sách 80 ảnh duyệt tay, `clean_v1` vẫn ở trạng thái **HOLD** với **38/205 ảnh (18.54%)** còn cảnh báo chưa duyệt (`POSSIBLE_MISSING`, `POSSIBLE_WRONG_CLASS`). Theo từng lớp, hai lớp phổ biến được hưởng lợi rõ rệt sau khi làm sạch (`car` tăng `+0.0110` lên `0.7485`, `person` tăng `+0.0053` lên `0.8274`), trong khi hai lớp hiếm ít box (`truck`: 42 box, `bus`: 33 box) dao động mạnh theo seed trong 20 epoch. *Cách kiểm:* duyệt nốt 38 ảnh cảnh báo còn lại hoặc chạy thêm biến thể `oracle` (nhãn người chuẩn) với $\ge 3$ seed.
 
 ## 6. Quyết định và ghi chú AI
 - **(a) Quyết định cuối & điều kiện để thành Release:** Giữ trạng thái **HOLD** cho lô `clean_v1` (205 ảnh). Để chuyển sang **Release**, cần bổ sung ngân sách duyệt tay cho tối thiểu **18 ảnh** đứng đầu phần còn lại của `05_review_queue.csv` (giảm số ảnh mang cảnh báo chưa duyệt từ `38/205` = `18.54%` xuống dưới `20/205` = `9.76% < 10.00%`).
