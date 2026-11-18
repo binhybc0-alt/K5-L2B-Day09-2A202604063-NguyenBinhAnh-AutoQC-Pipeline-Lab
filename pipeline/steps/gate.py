@@ -16,9 +16,49 @@ Tỉ lệ cảnh báo = (số ẢNH khác nhau có ≥ 1 cảnh báo) / (tổng 
 
 Trả về dict: decision, n_errors, n_warn_images, n_images, warn_ratio (làm tròn 4 chữ số), reasons (list[str], giải thích bằng tiếng Việt, có số liệu).
 """
-from ..common import ERROR, WARN  # noqa: F401
+from ..common import ERROR, WARN
 
 
 def decide(issues, image_stems, cfg, reviewed=frozenset()):
-    # TODO
-    raise NotImplementedError("gate chưa làm")
+    hold_thr = cfg["gate"]["warn_ratio_hold"]
+    valid_stems = set(image_stems)
+    reviewed_set = set(reviewed)
+
+    # Lỗi bắt buộc (ERROR) không bao giờ được bỏ qua kể cả khi ảnh đã nằm trong reviewed
+    n_errors = sum(1 for i in issues if i.severity == ERROR)
+
+    # Cảnh báo (WARN) chỉ đếm theo số ảnh hợp lệ trong dataset và chưa được người duyệt
+    warn_images = {
+        i.image
+        for i in issues
+        if i.severity == WARN and i.image in valid_stems and i.image not in reviewed_set
+    }
+
+    n_images = len(valid_stems)
+    n_warn_images = len(warn_images)
+    warn_ratio = round(n_warn_images / n_images, 4) if n_images > 0 else 0.0
+
+    if n_errors >= 1:
+        decision = "Rework"
+        reasons = [f"Còn {n_errors} lỗi bắt buộc (ERROR) chưa được xử lý."]
+    elif warn_ratio >= hold_thr:
+        decision = "Hold"
+        reasons = [
+            f"Không còn lỗi bắt buộc, nhưng tỉ lệ ảnh còn cảnh báo chưa duyệt là "
+            f"{warn_ratio:.2%} ({n_warn_images}/{n_images} ảnh) >= ngưỡng {hold_thr:.2%}."
+        ]
+    else:
+        decision = "Release"
+        reasons = [
+            f"Không còn lỗi bắt buộc; tỉ lệ ảnh còn cảnh báo chưa duyệt là "
+            f"{warn_ratio:.2%} ({n_warn_images}/{n_images} ảnh) < ngưỡng {hold_thr:.2%}."
+        ]
+
+    return {
+        "decision": decision,
+        "n_errors": n_errors,
+        "n_warn_images": n_warn_images,
+        "n_images": n_images,
+        "warn_ratio": warn_ratio,
+        "reasons": reasons,
+    }
